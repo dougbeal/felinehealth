@@ -1,0 +1,21 @@
+{
+  "name": "felinehealth",
+  "version": "0.0.0",
+  "description": "",
+  "author": "Douglas Beal",
+  "license": "MIT",
+  "dependencies": {
+    "async": "latest",
+    "googleapis": "^0.8.0",
+    "openurl": "^1.1.0",
+    "request": "^2.37.0"
+  },
+  "devDependencies": {
+    "underscore": "latest",
+    "mocha": "latest",
+    "chai": "latest",
+    "zombie": "latest",
+    "json2yaml": "latest",
+    "optparse": "latest"
+  }
+}

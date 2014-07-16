@@ -1,0 +1,10 @@
+_site/
+*~
+#*#
+.#*
+.bundle/
+Gemfile.lock
+.ropeproject/
+node_modules/
+
+
