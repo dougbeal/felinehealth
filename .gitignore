@@ -6,5 +6,5 @@ _site/
 Gemfile.lock
 .ropeproject/
 node_modules/
-
+.private/
 
