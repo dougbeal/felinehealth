@@ -9,12 +9,19 @@
 # * clean - clean generated .js files
 files = [
   'build'
-  '.'
-]
+  'drivesync.coffee'
+  'drivesync_test.coffee'
+  'felinehealthlibrary.coffee'
+  'felinehealthlibrary_test.coffee'
+  ]
 
 fs = require 'fs'
+path = require 'path'
 {print} = require 'util'
 {spawn, exec} = require 'child_process'
+drivesync = require './build/drivesync'
+async = require 'async'
+util = require 'util'
 
 try
   which = require('which').sync
@@ -86,6 +93,7 @@ task 'test', 'run tests', -> build -> mocha -> log ":)", green
 # ```
 task 'clean', 'clean generated files', -> clean -> log ";)", green
 
+task 'list', 'list google drive script projects', -> list -> log ";)", green
 
 # Internal Functions
 #
@@ -230,3 +238,24 @@ mocha = (options, callback) ->
 docco = (callback) ->
   #if moduleExists('docco')
   walk 'src', (err, files) -> launch 'docco', files, callback
+
+############################################################
+# google drive
+#
+
+# ## *list*
+list = (callback) ->
+  tasks = [
+    (callback) ->
+      drivesync.setupTokens callback, path.join(__dirname, '.private')
+    drivesync.setupDrive
+    drivesync.listProjects
+    ]
+  log "tasks #{util.inspect tasks}"
+  async.waterfall tasks,
+    (error, projects) ->
+      if error
+        console.log "error #{error}"
+      else
+        console.log "done #{util.inspect projects}"
+      callback()
