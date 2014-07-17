@@ -22,36 +22,36 @@ authCacheFileName = '.auth.json'
 #PROJECT_URL = 'https://script.google.com/feeds/download/export?id=' +
 #  PROJECT_ID + "&format=json"
 #testProjectID = "1idzRPIjiymntvkxgibT6Fz-mLQX7IGG3eVSdz4bSKNku5rN93VP3y7g2"
-
+exports.trace = false
 
 codeToToken = (auth, code, callback) ->
-  console.log "auth code #{code} to tokens."
+  console.log "auth code #{code} to tokens." if exports.trace
   auth.getToken code, (error, tokens) ->
-    console.log "auth tokens #{util.inspect tokens}."
+    console.log "auth tokens #{util.inspect tokens}." if exports.trace
     auth.credentials = tokens
     callback error, auth
 
 exports.setupTokens = (callback, privateDir) ->
-  console.log 'setupTokens'
+  console.log 'setupTokens' if exports.trace
   async.waterfall [
     readSecretFile = (callback) ->
       fs.readFile path.join(privateDir, secretFileName), 'utf8', (error, data) ->
         if error
-          console.log "error reading file: %s", error
+          console.log "error reading file: %s", error if exports.trace
           callback error
         else
           secret = JSON.parse data
           fs.readFile path.join(privateDir, authCacheFileName), 'utf8', (error, authCacheData) ->
             authCache = null
             if error
-              console.log "error reading auth cache: %s.", error
+              console.log "error reading auth cache: %s.", error if exports.trace
             else
               authCache = JSON.parse authCacheData
             callback null, secret, authCache
     ,
     startAuthorizationListener = (secret, authCache, callback) ->
-      console.log "secret: ", util.inspect secret
-      console.log "authcache: ", util.inspect authCache
+      console.log "secret: ", util.inspect secret if exports.trace
+      console.log "authcache: ", util.inspect authCache if exports.trace
       auth = new googleapis.OAuth2Client secret.installed.client_id,
         secret.installed.client_secret
       if authCache
@@ -63,12 +63,12 @@ exports.setupTokens = (callback, privateDir) ->
           # google authorization redirect
           uri = url.parse request.url, true
           if uri.pathname == '/favicon.ico'
-            console.log "http rejected #{uri.pathname}"
+            console.log "http rejected #{uri.pathname}" if exports.trace
             response.writeHead 404, {"Content-Type": "text/plain"}
             response.write "404 - no favicon\n"
             response.end
             return
-          console.log "http path #{uri.pathname}"
+          console.log "http path #{uri.pathname}" if exports.trace
           code = uri.query.code
           response.writeHead 200, {"Content-Type": "text/plain"}
           response.write "Erp derp\n"
@@ -79,9 +79,9 @@ exports.setupTokens = (callback, privateDir) ->
           server.close
           codeToToken auth, code, (error, auth) ->
             data = JSON.stringify auth.credentials
-            console.log "caching credentials #{authCacheFile} #{data}."
+            console.log "caching credentials #{authCacheFile} #{data}." if exports.trace
             fs.writeFile authCacheFile, data, (error) ->
-                console.log "cached credentials."
+                console.log "cached credentials." if exports.trace
             callback error, auth
         .listen 0, '127.0.0.1', () ->
           address = server.address()
@@ -95,21 +95,21 @@ exports.setupTokens = (callback, privateDir) ->
         callback error, auth
 
 exports.setupDrive = (auth, callback) ->
-  console.log 'setupDrive - loading google drive api'
+  console.log 'setupDrive - loading google drive api' if exports.trace
   googleapis.discover 'drive', 'v2'
   .execute (error, client) ->
     callback error, auth, client
 
 exports.listProjects = (auth, client, callback) ->
-  console.log "listing projects"
+  console.log "listing projects" if exports.trace
   client.drive.files
     .list q: "mimeType='application/vnd.google-apps.script'"
     .withAuthClient auth
     .execute (error, result) ->
       callback error, result, auth, client
 
-selectProject = (projects, auth, client, callback) ->
-  console.log 'project titles: ' +
+exports.selectProject = (projects, auth, client, callback) ->
+  console.log 'project titles: ' + if exports.trace
     ("'#{project.title}'" for project in projects)
   console.dir projects[0]
   exportLinks = (project.exportLinks for project in projects)
@@ -121,20 +121,20 @@ selectProject = (projects, auth, client, callback) ->
     "#{id}&format=json"]
   callback null, id, testLink, auth, client
 
-loadProjectFile = (id, links, auth, client, callback) ->
-  console.log "loading project file #{id}."
+exports.loadProjectFile = (id, links, auth, client, callback) ->
+  console.log "loading project file #{id}." if exports.trace
   client.drive.files
   .get fileId:id
   .withAuthClient auth
   .execute (error, projectFile) ->
     if error.code == 404
-      console.log "failed to load project file."
+      console.log "failed to load project file." if exports.trace
       error = null
       projectFile = id:id
     callback error, projectFile, links, auth, client
 
-downloadProject = (project, links, auth, client, callback) ->
-  console.log 'project export links: ' + links
+exports.downloadProject = (project, links, auth, client, callback) ->
+  console.log 'project export links: ' + links if exports.trace
   request links[0],
     auth:
       bearer: auth.credentials.access_token
@@ -143,7 +143,7 @@ downloadProject = (project, links, auth, client, callback) ->
     (error, response, body) ->
       callback error, project, auth, client, body
 
-updateFile = (project, auth, client, body, callback) ->
+exports.updateFile = (project, auth, client, body, callback) ->
   console.dir body
   file = null
   for file in body.files
@@ -152,7 +152,7 @@ updateFile = (project, auth, client, body, callback) ->
   projectId = project.id
   fileId = file.id
   console.log "#{file.name} #{file.type} filedid"+
-  " #{fileId} projectid #{projectId} "
+  " #{fileId} projectid #{projectId} " if exports.trace
   file.source = '// updated\n' + file.source
   client.drive.files
   .update fileId: projectId
@@ -163,9 +163,9 @@ updateFile = (project, auth, client, body, callback) ->
 
 test = ->
   async.waterfall [
-    setupTokens
-    setupDrive
-    listProjects
+    exports.setupTokens
+    exports.setupDrive
+    exports.listProjects
     ],
     (error, results) ->
       if error
