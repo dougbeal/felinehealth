@@ -22,6 +22,7 @@ path = require 'path'
 drivesync = require './build/drivesync'
 async = require 'async'
 util = require 'util'
+readline = require 'readline'
 
 try
   which = require('which').sync
@@ -93,7 +94,15 @@ task 'test', 'run tests', -> build -> mocha -> log ":)", green
 # ```
 task 'clean', 'clean generated files', -> clean -> log ";)", green
 
-task 'list', 'list google drive script projects', -> list -> log ";)", green
+task 'list', 'list google drive script projects', (options) ->
+  list options, ->
+    log ";)", green
+
+task 'select', 'select a google drive script project', (options) ->
+  list options, (error, projects) ->
+    select projects, options, (error, project) ->
+      log ";)", green
+      debugger
 
 # Internal Functions
 #
@@ -243,19 +252,72 @@ docco = (callback) ->
 # google drive
 #
 
+
+option '-v', '--verbose', 'Print out more.'
+option '-t', '--trace', 'Trace task invocation.'
+
+verbose = false
+trace = false
+
+out = console.log.bind console
+
+process_options = (options) ->
+  if not verbose and options.verbose
+    out "options: verbose"
+    verbose = options.verbose?
+  if not trace and options.trace
+    out "options: trace"
+    trace = options.trace?
+    drivesync.trace = trace
+  out "options: #{util.inspect options}" if verbose or trace
+
 # ## *list*
-list = (callback) ->
+list = (options, callback) ->
+  process_options options
   tasks = [
     (callback) ->
       drivesync.setupTokens callback, path.join(__dirname, '.private')
     drivesync.setupDrive
     drivesync.listProjects
     ]
-  log "tasks #{util.inspect tasks}"
+  log "tasks #{util.inspect tasks}" if verbose
   async.waterfall tasks,
-    (error, projects) ->
+    (error, results, auth, client) ->
       if error
-        console.log "error #{error}"
+        out "error #{error}"
       else
-        console.log "done #{util.inspect projects}"
-      callback()
+        projects = results.items
+        out "r:#{results?} a:#{auth?} c:#{client?}" if verbose
+        out "#{util.inspect results, showHidden=false, depth=1}" if verbose
+        l = ({ id: p.id, title: p.title } for p in projects)
+        out "list projects(#{results.items.length}): \n#{util.inspect l}"
+      callback? error, projects
+
+ask = (question, format, callback) ->
+  rl = readline.createInterface
+    input: process.stdin
+    output: process.stdout
+
+  return rl.question "#{question}:", (data) ->
+    data = data.toString().trim()
+    rl.close()
+    if format.test data
+      return callback data
+    else
+      return ask "'#{data}' should match: #{format}\n" + question,
+        format,
+        callback
+
+select = (projects, options, callback) ->
+  process_options options
+  prompt = []
+  for project,index in projects
+    prompt.push "#{index}: #{project.title}"
+  prompt.push "select project "
+  prompt = prompt.join '\n'
+  r = (selection) ->
+    out "##{selection} selected"
+    out "project #{util.inspect projects[selection]}"
+    callback? null, projects[selection]
+  #r 0
+  ask prompt, /[0-9]+/, r
