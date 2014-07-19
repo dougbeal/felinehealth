@@ -30,6 +30,7 @@ registerSpreadsheetTrigger = (namespace) ->
       ScriptApp.deleteTrigger triggers[i]
     prefix = ""
     prefix = "#{namespace}." if namespace
+    properties.setProperty 'namespace', namespace
     ScriptApp.newTrigger(prefix + "edit").forSpreadsheet(spreadsheet)
     .onEdit().create()
     ScriptApp.newTrigger(prefix + "change").forSpreadsheet(spreadsheet)
@@ -67,6 +68,7 @@ logState = ->
     ScriptApp.getProjectTriggers().map (item) ->
       item.getHandlerFunction()
   dump config
+  dump properties.getProperty 'namespace'
   flushLog()
   return
 
@@ -120,22 +122,20 @@ cacheSheetRows = ->
   flushLog()
   return
 
-initialize = ->
+initialize = (e) ->
   dump "initialize."
   readConfig()
   cacheSheetRows()
-  ###
-  SpreadsheetApp.getUi().createAddonMenu()
-  .addItem('Start', 'showSidebar')
-  .addToUi();
-  ###
+  initializeMenus e
   return
 
-#
-#  SpreadsheetApp.getUi().createAddonMenu()
-#  .addItem('Start', 'showSidebar')
-#  .addToUi();
-#
+initializeMenus = (e) ->
+  namespace = properties.getProperty 'namespace'
+  ui = SpreadsheetApp.getUi()
+  ui.createAddonMenu()
+  .addItem 'Log State', "#{namespace}.logState"
+  .addToUi()
+
 
 ###
 Event handlers
@@ -149,9 +149,9 @@ onInstall = (namespace) ->
 ###
 Called onOpen
 ###
-onOpen = ->
+onOpen = (e) ->
   dump "onOpen."
-  initialize()
+  initialize(e)
   return
 
 edit = (e) ->
