@@ -8,3 +8,7 @@ Gemfile.lock
 node_modules/
 .private/
 
+/build/drivesync.js
+/build/drivesync.map
+/build/drivesync_test.js
+/build/drivesync_test.map
