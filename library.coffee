@@ -72,6 +72,10 @@ logState = ->
   flushLog()
   return
 
+truncateLog = ->
+  rows = logSheet.getMaxRows()
+  logSheet.deleteRows 1, rows - 1
+
 dump = ->
   Logger.log.apply Logger, arguments if verbose
   return
@@ -132,8 +136,10 @@ initialize = (e) ->
 initializeMenus = (e) ->
   namespace = properties.getProperty 'namespace'
   ui = SpreadsheetApp.getUi()
-  ui.createAddonMenu()
-  .addItem 'Log State', "#{namespace}.logState"
+  menu = ui.createAddonMenu()
+  menu.addItem 'Log State', "#{namespace}.logState"
+  .addToUi()
+  menu.addItem 'Truncate Log', "#{namespace}.truncateLog"
   .addToUi()
 
 
