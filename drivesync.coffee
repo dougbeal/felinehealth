@@ -23,6 +23,7 @@ authCacheFileName = '.auth.json'
 #  PROJECT_ID + "&format=json"
 #testProjectID = "1idzRPIjiymntvkxgibT6Fz-mLQX7IGG3eVSdz4bSKNku5rN93VP3y7g2"
 exports.trace = false
+exports.privateDir = "~/.private"
 
 codeToToken = (auth, code, callback) ->
   console.log "auth code #{code} to tokens." if exports.trace
@@ -31,20 +32,41 @@ codeToToken = (auth, code, callback) ->
     auth.credentials = tokens
     callback error, auth
 
-exports.setupTokens = (callback, privateDir) ->
+refreshToken = (auth, callback) ->
+  console.log "refresh token"
+  auth.refreshAccessToken (error, credentials) ->
+    writeCredentials auth, (fileError, auth) ->
+      callback error, auth
+
+writeCredentials = (auth, callback) ->
+  data = JSON.stringify auth.credentials
+  if exports.trace
+    console.log "caching credentials #{authCacheFileName} #{data}."
+  dest = path.join exports.privateDir, authCacheFileName
+  fs.writeFile dest, data, (fileError) ->
+    if fileError
+      console.log "error caching credentials #{fileError}."
+    else
+      console.log "cached credentials." if exports.trace
+    callback fileError, auth
+
+exports.setupTokens = (callback) ->
   console.log 'setupTokens' if exports.trace
   async.waterfall [
     readSecretFile = (callback) ->
-      fs.readFile path.join(privateDir, secretFileName), 'utf8', (error, data) ->
+      source = path.join(exports.privateDir, secretFileName)
+      fs.readFile source, 'utf8', (error, data) ->
         if error
           console.log "error reading file: %s", error if exports.trace
           callback error
         else
           secret = JSON.parse data
-          fs.readFile path.join(privateDir, authCacheFileName), 'utf8', (error, authCacheData) ->
+          source = path.join(exports.privateDir, authCacheFileName)
+          fs.readFile source, 'utf8', (error, authCacheData) ->
             authCache = null
             if error
-              console.log "error reading auth cache: %s.", error if exports.trace
+              if exports.trace
+                console.log "error reading auth cache: %s.", error
             else
               authCache = JSON.parse authCacheData
             callback null, secret, authCache
@@ -78,11 +100,8 @@ exports.setupTokens = (callback, privateDir) ->
           request.connection.destroy
           server.close
           codeToToken auth, code, (error, auth) ->
-            data = JSON.stringify auth.credentials
-            console.log "caching credentials #{authCacheFile} #{data}." if exports.trace
-            fs.writeFile authCacheFile, data, (error) ->
-                console.log "cached credentials." if exports.trace
-            callback error, auth
+            writeCredentials auth, (fileError, auth) ->
+              callback error, auth
         .listen 0, '127.0.0.1', () ->
           address = server.address()
           auth = new googleapis.OAuth2Client secret.installed.client_id,
@@ -121,6 +140,22 @@ exports.selectProject = (projects, auth, client, callback) ->
     "#{id}&format=json"]
   callback null, id, testLink, auth, client
 
+#untested
+exports.downloadFileMetadata = (id, auth, client, callback) ->
+  console.log "loading project file #{id}." if exports.trace
+  client.drive.files
+  .get fileId:id
+  .withAuthClient auth
+  .execute (error, meta) ->
+    switch error.code
+      when 404
+        console.log "failed to load file metadata."
+        callback error, null, auth, client
+        break
+      else
+        console.log "file #{id} - #{util.inspect meta}"
+        callback error, meta, auth, client
+
 exports.loadProjectFile = (id, links, auth, client, callback) ->
   console.log "loading project file #{id}." if exports.trace
   client.drive.files
@@ -141,25 +176,23 @@ exports.downloadProject = (project, links, auth, client, callback) ->
     json: true
     ,
     (error, response, body) ->
-      callback error, project, auth, client, body
+      console.log "download error #{error}" if error
+      console.log "download response #{response.statusCode}" if exports.trace
+      switch response.statusCode
+        when 401 then refreshToken auth, (error, auth) ->
+          exports.downloadProject project, links, auth, client, callback
+        else
+          callback error, project, auth, client, body
 
-exports.updateFile = (project, auth, client, body, callback) ->
-  console.dir body
-  file = null
-  for file in body.files
-    if file.name == 'test'
-      break
-  projectId = project.id
-  fileId = file.id
-  console.log "#{file.name} #{file.type} filedid"+
-  " #{fileId} projectid #{projectId} " if exports.trace
-  file.source = '// updated\n' + file.source
+exports.updateFile = (id, data, auth, client, callback) ->
+  console.log "id #{id}  #{util.inspect data} " if exports.trace
   client.drive.files
-  .update fileId: projectId
-  .withMedia 'application/json',
-    JSON.stringify "files": [file]
+  .update fileId: id
+  .withMedia 'application/json', data
   .withAuthClient auth
-  .execute callback
+  .execute (error, result) ->
+    console.log "updateFile er #{util.inspect error} re #{util.inspect result}" if exports.trace
+    callback error, result
 
 test = ->
   async.waterfall [

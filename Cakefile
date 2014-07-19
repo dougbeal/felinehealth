@@ -11,8 +11,8 @@ files = [
   'build'
   'drivesync.coffee'
   'drivesync_test.coffee'
-  'felinehealthlibrary.coffee'
-  'felinehealthlibrary_test.coffee'
+  'library.coffee'
+  'library_test.coffee'
   ]
 
 fs = require 'fs'
@@ -36,6 +36,16 @@ bold = '\x1b[0;1m'
 green = '\x1b[0;32m'
 reset = '\x1b[0m'
 red = '\x1b[0;31m'
+
+privateDir = path.join __dirname, ".private"
+selectionFile = path.join privateDir, "selection.json"
+projectFile = path.join privateDir, "project.json"
+drivesync.privateDir = privateDir
+projectDownloadDir = path.join __dirname, files[0], 'download'
+buildDir = path.join __dirname, files[0]
+
+googleType =
+  server_js: 'js'
 
 # Cakefile Tasks
 #
@@ -95,14 +105,55 @@ task 'test', 'run tests', -> build -> mocha -> log ":)", green
 task 'clean', 'clean generated files', -> clean -> log ";)", green
 
 task 'list', 'list google drive script projects', (options) ->
-  list options, ->
-    log ";)", green
+  process_options options
+  list -> log ";)", green
 
 task 'select', 'select a google drive script project', (options) ->
-  list options, (error, projects) ->
-    select projects, options, (error, project) ->
-      log ";)", green
-      debugger
+  process_options options
+  list (error, projects) ->
+    select projects, (error, project) ->
+      writeSelection project, (error, project) ->
+        log ";)", green
+
+task 'download', 'download selected google drive script project', (options) ->
+  process_options options
+  readSelection (error, project) ->
+    if error
+      list (error, projects) ->
+        select options, projects, (error, project) ->
+          writeSelection project, (error, project) ->
+            out "download selected '#{project.title}'" if verbose
+            download project, (error, project) ->
+              log ";)", green
+    else
+      out "download previously selected '#{project.title}'" if verbose
+      download project, (error, project) ->
+        log ";)", green
+
+do_upload = (error, meta) ->
+  out "do_upload" if trace
+  readProject (error, project) ->
+    out "project #{project} error #{error}" if trace
+    if error
+      out "failed to read project #{error}."
+    upload meta, project, (error) ->
+      if error
+        log ";(", red
+      else
+        log ";)", green
+
+task 'upload', 'uploads files from bild matching project files', (options) ->
+  process_options options
+  out "task upload" if trace
+  readSelection (error, project) ->
+    if error
+      out "error #{error} during readSelection"
+      list (error, projects) ->
+        select projects, (error, project) ->
+          writeSelection project, do_upload
+    else
+      out "title '#{project.title}'" if verbose
+      do_upload error, project
 
 # Internal Functions
 #
@@ -265,6 +316,7 @@ process_options = (options) ->
   if not verbose and options.verbose
     out "options: verbose"
     verbose = options.verbose?
+    drivesync.verbose = verbose
   if not trace and options.trace
     out "options: trace"
     trace = options.trace?
@@ -272,11 +324,11 @@ process_options = (options) ->
   out "options: #{util.inspect options}" if verbose or trace
 
 # ## *list*
-list = (options, callback) ->
-  process_options options
+list = (callback) ->
+  out "list" if trace
   tasks = [
     (callback) ->
-      drivesync.setupTokens callback, path.join(__dirname, '.private')
+      drivesync.setupTokens callback
     drivesync.setupDrive
     drivesync.listProjects
     ]
@@ -288,7 +340,7 @@ list = (options, callback) ->
       else
         projects = results.items
         out "r:#{results?} a:#{auth?} c:#{client?}" if verbose
-        out "#{util.inspect results, showHidden=false, depth=1}" if verbose
+        out "#{util.inspect results, showHidden=false, depth=2}" if verbose
         l = ({ id: p.id, title: p.title } for p in projects)
         out "list projects(#{results.items.length}): \n#{util.inspect l}"
       callback? error, projects
@@ -308,16 +360,136 @@ ask = (question, format, callback) ->
         format,
         callback
 
-select = (projects, options, callback) ->
-  process_options options
+select = (projects, callback) ->
   prompt = []
   for project,index in projects
     prompt.push "#{index}: #{project.title}"
   prompt.push "select project "
   prompt = prompt.join '\n'
   r = (selection) ->
+    project = projects[selection]
     out "##{selection} selected"
-    out "project #{util.inspect projects[selection]}"
+    out "project #{util.inspect project}"
     callback? null, projects[selection]
   #r 0
   ask prompt, /[0-9]+/, r
+
+download = (projectMetadata, callback) ->
+  out projectMetadata.title if verbose
+  async.waterfall [
+    (callback) ->
+      drivesync.setupTokens callback
+    (auth, callback) ->
+      links = for type, link of projectMetadata.exportLinks
+        link
+      out "project links #{util.inspect links}." if verbose
+      drivesync.downloadProject projectMetadata, links, auth, null, callback
+    ],
+    (error, project, auth, client, body) ->
+      out "error #{error}" if error
+      out "project #{util.inspect body}" if verbose
+      fs.mkdir projectDownloadDir, (error) ->
+        out "error #{error}" if error
+        write = []
+        for file in body.files
+          type = typeToExtension file.type
+          name = "#{file.name}.#{type}"
+          dst = path.join projectDownloadDir, name
+          out "filename #{name}" if verbose
+          write.push { 'dest':dst, data:file.source}
+        write.push {
+          'dest': projectFile
+          data: JSON.stringify body
+          }
+        out "write #{util.inspect write}" if trace
+        async.each write, (file, callback) ->
+          fs.writeFile file.dest, file.data, callback
+          ,
+          (error) ->
+            if error
+              out "error writing project #{error}"
+            callback error, project, auth, client, body
+
+upload = (meta, project, callback) ->
+  projectID = meta.id
+  out "upload to project #{projectID}" if trace
+  async.waterfall [
+    (callback) ->
+      drivesync.setupTokens callback
+    ,
+    drivesync.setupDrive
+    ,
+    (auth, client, callback) ->
+      out "map" if trace
+      async.map project.files, (file, callback) ->
+        filename = "#{file.name}.#{typeToExtension file.type}"
+        id = file.id
+        fullpath = path.join buildDir, filename
+        out "uploading #{fullpath}"
+        fs.readFile fullpath, 'utf8', (error, data) ->
+          if error
+            if error.code is 'ENOENT'
+              out "error reading #{fullpath} #{error}, excluding" if verbose
+              callback null, null
+            else
+              out "error reading #{fullpath} #{error}, fatal"
+              callback error, null
+          else
+            out "read file #{fullpath} size #{data.length}." if trace
+            file.source = data
+            callback error, file
+      ,
+      (error, result) ->
+        if error
+          out "error during upload #{error} #{result}"
+          callback error, result
+        else
+          files = files: result.filter (x) -> x
+          json = JSON.stringify files
+          drivesync.updateFile projectID, json, auth, client, (error, result) ->
+            callback error, result
+      ],
+      (error, result) -> callback error, result
+
+
+
+typeToExtension = (scriptType) ->
+  t = scriptType
+  t = googleType[scriptType] if scriptType of googleType
+  return t
+
+
+
+projectFileMap = (project) ->
+  map = {}
+  for file in project.files
+    filename = "#{file.name}.#{typeToExtension file.type}"
+    map[filename] = file.id
+  return map
+
+readProject = (callback) ->
+  readJSON projectFile, callback
+
+writeSelection = (project, callback) ->
+  writeJSON selectionFile, project, callback
+
+writeJSON = (file, data, callback) ->
+  data = JSON.stringify data
+  out data if verbose
+  fs.writeFile file, data, (error) ->
+    callback error, data
+
+readSelection = (callback) ->
+  readJSON selectionFile, callback
+
+readJSON = (file, callback) ->
+  out "readJSON #{file}" if trace
+  fs.readFile file, (error, data) ->
+    if error
+      out "readJSON error #{error}" if trace
+      callback error, null
+    else
+      out "readJSON #{data.length}" if trace
+      json = JSON.parse data
+      #out "readJSON #{util.inspect json}" if trace
+      callback null, json
