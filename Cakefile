@@ -10,9 +10,9 @@
 files = [
   'build'
   'drivesync.coffee'
-  'drivesync_test.coffee'
+  'test/drivesync_test.coffee'
   'library.coffee'
-  'library_test.coffee'
+  'test/library_test.coffee'
   ]
 
 fs = require 'fs'
