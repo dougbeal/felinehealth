@@ -105,18 +105,13 @@ tdump = ->
   Logger.log.apply Logger, arguments if trace
   return
 
-insertRowEvent = (range) ->
-  setupNewRow range
-  return
-
 setupNewRow = (range) ->
   dest = range
   row = range.getRow()
   oldValue = dest.getValue()
   if oldValue is ""
     destFormat = spreadsheet.getRange "A#{row}:A"
-    sourceFormat = dest.offset -1, 0
-    sourceFormat.copyTo destFormat, formatOnly: true
+    formatRow row
     dest.setValue new Date()
     dump "setupNewRow row %s - %s", row, dest.getA1Notation()
   else
@@ -124,6 +119,40 @@ setupNewRow = (range) ->
       row, dest.getA1Notation()
   flushLog()
   return
+
+formatRow = (row) ->
+  dest = spreadsheet.getRange "A#{row}:A"
+  source = dest.offset -1, 0
+  source.copyTo dest, formatOnly: true
+
+addNewRow = (sheet) ->
+  sheet.appendRow [new Date()]
+  row = sheet.getMaxRows()
+  formatRow row
+  dump "addNewRow new and formatted %s", row
+
+isDateCurrent = (newDate, oldDate) ->
+  ny = newDate.getFullYear()
+  oy = oldDate.getFullYear()
+  nm = newDate.getMonth()
+  om = oldDate.getMonth()
+  nd = newDate.getDate()
+  od = oldDate.getDate()
+  return ny < oy or
+    (ny == oy and
+      (nm < om or
+        (nm == om and
+          (nd <= od))))
+
+# A column contains current year/month/day or further in the future
+isMaxRowCurrent = (sheet) ->
+  n = new Date()
+  cell  = "A#{sheet.getMaxRows()}"
+  t = sheet.getRange(cell).getValue()
+  dump "isMaxRowCurrent sheet '%s:%s' dates ['%s', '%s']",
+    sheet.getName(), cell, n, t
+  return isDateCurrent n, t
+
 
 expireCache = ->
   sheets = spreadsheet.getSheets()
@@ -179,8 +208,14 @@ onInstall = (namespace) ->
 Called onOpen
 ###
 onOpen = (e) ->
-  dump "onOpen."
+  dump "onOpen. e:'%s'", e
   initialize(e)
+  # if last row is not current, instert another row
+  ss = SpreadsheetApp.getActiveSpreadsheet()
+  sheet = ss.getSheets()[0]
+  dump "onOpen - examine date on sheet '%s'", sheet.getName()
+  addNewRow sheet if not isMaxRowCurrent sheet
+  flushLog()
   return
 
 edit = (e) ->
@@ -258,7 +293,7 @@ change_INSERT_ROW = () ->
     range = sheet.getRange "A#{rows}"
     dump "onChange INSERT_ROW - sheet %s:'%s' rows %s (%s) range %s.",
       sid, name, rows, cachedRows, range.getA1Notation()
-    insertRowEvent  range
+    setupNewRow range
     ###
     #disabled in events
     dump "active range %s", sheet.getActiveRange()?.getA1Notation()
@@ -303,11 +338,14 @@ ignoreSheets = [
   "Config"
 ]
 logSheetName = "Log"
-spreadsheet = SpreadsheetApp.getActive()
-logSheet = spreadsheet.getSheetByName logSheetName
-properties = PropertiesService.getDocumentProperties()
-config = {}
-verbose = properties.getProperty "config.verbose"
-trace = properties.getProperty "config.trace"
-if verbose is null or trace is null
-  readConfig()
+if SpreadsheetApp?
+  spreadsheet = SpreadsheetApp.getActive()
+  logSheet = spreadsheet.getSheetByName logSheetName
+  properties = PropertiesService.getDocumentProperties()
+  config = {}
+  verbose = properties.getProperty "config.verbose"
+  trace = properties.getProperty "config.trace"
+  if verbose is null or trace is null
+    readConfig()
+else
+  exports.isDateCurrent = isDateCurrent

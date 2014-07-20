@@ -1,8 +1,6 @@
 chai = require 'chai'
 chai.config.includeStack = true
 should = chai.should()
-assert = chai.assert
-
 
 
 describe 'isDateCurrent', ->
@@ -12,7 +10,7 @@ describe 'isDateCurrent', ->
 
   it 'same date returns true', ->
     date = new Date 2014,1,1
-    assert library.isDateCurrent(date, date) is true
+    library.isDateCurrent(date, date).should.equal true
 
   it 'same date with time returns true', ->
     date = new Date()
