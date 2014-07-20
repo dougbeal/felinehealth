@@ -83,6 +83,20 @@ truncateLog = ->
   rows = logSheet.getMaxRows()
   logSheet.deleteRows 1, rows - 1
 
+copyTemplate = ->
+  template = 'BGTemplate'
+  name = 'Blood Glucose'
+  ss = SpreadsheetApp.getActive()
+  source = ss.getSheetByName template
+  year = new Date().getFullYear()
+  copy = source.copyTo ss
+  copy.setName "#{name} #{year}"
+  ss.setActiveSheet copy
+  ss.moveActiveSheet 1
+  r = copy.getMaxRows()
+  dest = copy.getRange "A#{r}"
+  dest.setValue new Date()
+
 dump = ->
   Logger.log.apply Logger, arguments if verbose
   return
