@@ -67,8 +67,15 @@ logState = ->
   dump "triggers %s installed for %s", spreadsheet.getName(),
     ScriptApp.getProjectTriggers().map (item) ->
       item.getHandlerFunction()
-  dump config
+  dump "config %s", config
   dump properties.getProperty 'namespace'
+  sheet = SpreadsheetApp.getActiveSheet()
+  if sheet
+    dump "active sheet %s", sheet.getName()
+    dump "active range %s", sheet.getActiveRange()?.getA1Notation()
+    dump "active column %s", sheet.getActiveRange()?.getColumn()
+  else
+    dump "no active sheet"
   flushLog()
   return
 
@@ -141,6 +148,8 @@ initializeMenus = (e) ->
   .addToUi()
   menu.addItem 'Truncate Log', "#{namespace}.truncateLog"
   .addToUi()
+  menu.addItem 'Template to New Year', "#{namespace}.copyTemplate"
+  .addToUi()
 
 
 ###
@@ -206,7 +215,6 @@ change = (e) ->
     change_INSERT_ROW()
   else if e.changeType is "REMOVE_ROW"
     change_REMOVE_ROW()
-
   flushLog()
   return
 
@@ -222,9 +230,9 @@ change_INSERT_ROW = () ->
     if isIgnoreSheet name
       dump "onChange INSERT_ROW - ignoring %s.", name
       continue
-    cachedRows = properties.getProperty name
+    cachedRows = +properties.getProperty name
     tdump "onChange INSERT_ROW #{name} r #{rows} c #{cachedRows}."
-    if cachedRows? and rows isnt +cachedRows
+    if cachedRows? and rows isnt cachedRows
       # changed sheet found
       properties.setProperty name, rows
       found = true
@@ -233,9 +241,22 @@ change_INSERT_ROW = () ->
       dump "onChange INSERT_ROW null cache - sheet %s:'%s' rows %s.",
         sid, name, rows  if cachedRows is null
   if found
-    dump "onChange INSERT_ROW - sheet %s:'%s' rows %s (%s).",
-      sid, name, rows, cachedRows
-    insertRowEvent sheet.getRange "A#{rows}"
+    range = sheet.getRange "A#{rows}"
+    dump "onChange INSERT_ROW - sheet %s:'%s' rows %s (%s) range %s.",
+      sid, name, rows, cachedRows, range.getA1Notation()
+    insertRowEvent  range
+    ###
+    #disabled in events
+    dump "active range %s", sheet.getActiveRange()?.getA1Notation()
+    sheet.setActiveRange range
+    sheet.setActiveSelection range
+    sheet = SpreadsheetApp.getActiveSheet()
+    if sheet
+      dump "active sheet %s", sheet.getName()
+      dump "active range %s", sheet.getActiveRange()?.getA1Notation()
+    else
+      dump "no active sheet"
+      ###
   else
     dump "onChange INSERT_ROW - failed to find sheet ."
 
@@ -248,7 +269,7 @@ change_REMOVE_ROW = () ->
     name = sheet.getName()
     sid = sheet.getSheetId()
     continue  if isIgnoreSheet(name)
-    cachedRows = properties.getProperty(name)
+    cachedRows = +properties.getProperty(name)
     unless rows is cachedRows
       properties.setProperty name, rows
       dump "onChange REMOVE_ROW cached updated - sheet %s:'%s' rows %s (%s).",
@@ -259,7 +280,9 @@ change_REMOVE_ROW = () ->
         sid, name, rows, cachedRows
 
 AM_U_COLUMN = 3
-PM_U_COLUMN = 29
+AM_BG_COLUMN = 4
+PM_U_COLUMN = 28
+PM_BG_COLUMN = AM_BG_COLUMN + 12
 
 ignoreSheets = [
   "Log"
