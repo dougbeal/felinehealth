@@ -91,7 +91,9 @@ task 'watch', 'compile and watch', -> build true, -> log ":-)", green
 # ```
 # cake test
 # ```
-task 'test', 'run tests', -> build -> mocha -> log ":)", green
+task 'test', 'run tests', (options) ->
+  process_options options
+  build -> mocha -> log ":)", green
 
 # ## *clean*
 #
@@ -287,8 +289,8 @@ mocha = (options, callback) ->
     options = []
   # add coffee directive
   options.push '--compilers'
-  options.push 'coffee:coffee-script'
-
+  options.push 'coffee:coffee-script/register'
+  out "mocha #{util.inspect options}" if verbose
   launch 'mocha', options, callback
 
 # ## *docco*
