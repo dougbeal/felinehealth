@@ -82,7 +82,7 @@ logState = function() {
       dump("ignore sheet %s:'%s' rows %s.", sid, name, rows);
       continue;
     }
-    crows = properties.getProperty(name);
+    crows = +properties.getProperty(name);
     dump("sheet %s:'%s' rows %s/%s.", sid, name, crows, rows);
   }
   dump("triggers %s installed for %s", spreadsheet.getName(), ScriptApp.getProjectTriggers().map(function(item) {
@@ -216,7 +216,7 @@ edit = function(e) {
   var cachedRows, column, note, offset, rows, sheet, sheetName, targetRange;
   sheet = e.source.getActiveSheet();
   sheetName = sheet.getSheetName();
-  cachedRows = properties.getProperty(sheetName);
+  cachedRows = +properties.getProperty(sheetName);
   rows = sheet.getMaxRows();
   dump("onEdit range %s, name %s, event %s, rows %s, cached %s", e.range.getA1Notation(), sheetName, e, rows, cachedRows);
   if (!isIgnoreSheet(sheetName)) {
