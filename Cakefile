@@ -69,7 +69,9 @@ task 'docs', 'generate documentation', -> docco()
 # ```
 # cake build
 # ```
-task 'build', 'compile source', -> build -> log ":)", green
+task 'build', 'compile source', (options) ->
+  process_options options
+  build -> log ":)", green
 
 # ## *watch*
 #
@@ -80,7 +82,9 @@ task 'build', 'compile source', -> build -> log ":)", green
 # ```
 # cake watch
 # ```
-task 'watch', 'compile and watch', -> build true, -> log ":-)", green
+task 'watch', 'compile and watch', (options) ->
+  process_options options
+  watch -> log ":-)", green
 
 # ## *test*
 #
@@ -104,7 +108,9 @@ task 'test', 'run tests', (options) ->
 # ```
 # cake clean
 # ```
-task 'clean', 'clean generated files', -> clean -> log ";)", green
+task 'clean', 'clean generated files', (options) ->
+  process_options options
+  clean -> log ";)", green
 
 task 'list', 'list google drive script projects', (options) ->
   process_options options
@@ -217,7 +223,15 @@ launch = (cmd, options=[], callback) ->
     if status is 0
       callback()
     else
-      process.exit(status);
+      process.exit status
+
+launchError = (cmd, options=[], callback) ->
+  cmd = which(cmd) if which
+  app = spawn cmd, options
+  app.stdout.pipe(process.stdout)
+  app.stderr.pipe(process.stderr)
+  app.on 'exit', (status) ->
+    callback(status)
 
 # ## *build*
 #
@@ -233,47 +247,57 @@ build = (watch, callback) ->
   options = ['-m', '-c', '-b', '-o' ]
   options = options.concat files
   options.unshift '-w' if watch
-  launch 'coffee', options, ->
-    post_compile callback
+  launchError 'coffee', options, (error) ->
+    if error
+      out "error during compile #{error}.  no post_compile"
+      callback error
+    else
+      post_compile callback
 
 post_compile = (callback) ->
   dest_dir = files[0]
   sources = files[1..]
-  for source in sources
+
+  async.each sources, (source, callback) ->
     filename = path.basename source, '.coffee'
     dest = path.join dest_dir, "#{filename}.js"
-    launch 'util/commit_stamp.sh', [source, dest], ->
-      out filename, source, dest
-  callback()
+    launchError 'util/commit_stamp.sh', [source, dest], (error) ->
+      out "post_compile: #{filename}, #{source}, #{dest}, #{error}" if trace
+      callback error
+  ,
+  callback
 
 # ## coffee watch not flexible enough, I want to run post filters
-watch = (callback) ->
+watch = () ->
+  task = "watch"
   out "#{task}: Watching for changes."
   _building = true
 
-  build_done = (err, results) ->
+  build_done = (error) ->
     _building = false
-    console.error "#{task}: ", err if err?.length
-    out "#{task}: ", results if err?.length and results?.length
-    out "#{task}: finished building r:#{results?.length}."
+    #console.error "#{task}: ", err if err?.length
+    #out "#{task}: ", results if err?.length and results?.length
+    out "#{task}: finished building e:#{error?}."
 
   change = (event, filename) ->
-    out "#{task}: #{filename} #{event}"
+    out "#{task}.change: #{filename} #{event}"
     unless _building
       _building = true
-      invoke 'build', build_done
+      build false, build_done
     else
-      out "#{task}: ignoring file watch, building in progress."
+      out "#{task}.change: ignoring file watch, building in progress."
 
-  files = files[1..]
-  build (err, results) ->
+  source_files = files[1..]
+  build false, (error) ->
+    out "#{task}: first pass build finished." if verbose
     # wait for build to finish
-    for file in files
+    for file in source_files
+      out "#{task}: start on file #{file}."
       try
         fs.watch file, persistent: true, change
       catch error
         console.error file, error
-    build_done err, results
+    build_done error
 
 # ## *unlinkIfCoffeeFile*
 #
