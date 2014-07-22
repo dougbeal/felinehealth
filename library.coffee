@@ -16,6 +16,8 @@ readConfig = ->
   config["init"] = true
   verbose = config["verbose"]
   trace = config["trace"]
+  # todo: add autoAddNewLines to config
+  config['autoAddNewLines'] = true
   Logger.log "readConfig %s", config
   flushLog()
   return
@@ -37,6 +39,9 @@ registerSpreadsheetTrigger = (namespace) ->
     .onChange().create()
     ScriptApp.newTrigger(prefix + "initialize").forSpreadsheet(spreadsheet)
     .onOpen().create()
+
+    enableTimeTrigger(namespace) if autoAddNewLines
+
     dump "triggers %s installed for %s", spreadsheet.getName(),
       ScriptApp.getProjectTriggers().map (item) ->
         item.getHandlerFunction()
@@ -45,6 +50,31 @@ registerSpreadsheetTrigger = (namespace) ->
     dump "spreadsheet was null, no triggers installed"
   flushLog()
   return
+
+setupTimeTrigger = (functionName, namespace) ->
+  namespace = properties.getProperty 'namespace' if not namespace?
+  prefix = ""
+  prefix = "#{namespace}." if namespace
+  # run every 24 hours in local time zone? at 1am
+  return ScriptApp.newTrigger(prefix + functionName)
+
+enableTimeTrigger = (namespace)->
+  setupTimeTrigger "onDaily", namespace
+  .timeBased()
+  .atHour 1
+  .everyDays 1
+  .create()
+  dump "Enabling time trigger."
+  return
+
+testTimeTrigger = () ->
+  setupTimeTrigger "onDaily"
+  .timeBased()
+  .after 1
+  .create()
+  dump "Enabling one shot test time trigger."
+  return
+
 
 flushLog = ->
   if verbose
@@ -202,6 +232,17 @@ onInstall = (namespace) ->
   dump "onInstall"
   readConfig()
   registerSpreadsheetTrigger namespace
+  onOpen()
+  return
+
+###
+Automatically add new line
+###
+onDaily = () ->
+  sheet = ss.getSheets()[0]
+  dump "onDaily - examine date on sheet '%s'", sheet.getName()
+  addNewRow sheet if not isMaxRowCurrent sheet
+  flushLog()
   return
 
 ###
@@ -210,11 +251,13 @@ Called onOpen
 onOpen = (e) ->
   dump "onOpen. e:'%s'", e
   initialize(e)
-  # if last row is not current, instert another row
-  ss = SpreadsheetApp.getActiveSpreadsheet()
-  sheet = ss.getSheets()[0]
-  dump "onOpen - examine date on sheet '%s'", sheet.getName()
-  addNewRow sheet if not isMaxRowCurrent sheet
+  if autoAddNewLines
+    # if last row is not current, instert another row
+    ss = SpreadsheetApp.getActiveSpreadsheet()
+    sheet = ss.getSheets()[0]
+    dump "onOpen - autoAddNewLines - examine date on sheet '%s'",
+      sheet.getName()
+    addNewRow sheet if not isMaxRowCurrent sheet
   flushLog()
   return
 
@@ -345,6 +388,9 @@ if SpreadsheetApp?
   config = {}
   verbose = properties.getProperty "config.verbose"
   trace = properties.getProperty "config.trace"
+  # todo: add to config
+  # todo: create config sidebar, eliminate config sheet
+  autoAddNewLines = true
   if verbose is null or trace is null
     readConfig()
 else
