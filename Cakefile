@@ -147,15 +147,16 @@ do_upload = (error, meta) ->
 task 'upload', 'uploads files from bild matching project files', (options) ->
   process_options options
   out "task upload" if trace
-  readSelection (error, project) ->
-    if error
-      out "error #{error} during readSelection"
-      list (error, projects) ->
-        select projects, (error, project) ->
-          writeSelection project, do_upload
-    else
-      out "title '#{project.title}'" if verbose
-      do_upload error, project
+  build ->
+    readSelection (error, project) ->
+      if error
+        out "error #{error} during readSelection"
+        list (error, projects) ->
+          select projects, (error, project) ->
+            writeSelection project, do_upload
+      else
+        out "title '#{project.title}'" if verbose
+        do_upload error, project
 
 # Internal Functions
 #
@@ -232,7 +233,47 @@ build = (watch, callback) ->
   options = ['-m', '-c', '-b', '-o' ]
   options = options.concat files
   options.unshift '-w' if watch
-  launch 'coffee', options, callback
+  launch 'coffee', options, ->
+    post_compile callback
+
+post_compile = (callback) ->
+  dest_dir = files[0]
+  sources = files[1..]
+  for source in sources
+    filename = path.basename source, '.coffee'
+    dest = path.join dest_dir, "#{filename}.js"
+    launch 'util/commit_stamp.sh', [source, dest], ->
+      out filename, source, dest
+  callback()
+
+# ## coffee watch not flexible enough, I want to run post filters
+watch = (callback) ->
+  out "#{task}: Watching for changes."
+  _building = true
+
+  build_done = (err, results) ->
+    _building = false
+    console.error "#{task}: ", err if err?.length
+    out "#{task}: ", results if err?.length and results?.length
+    out "#{task}: finished building r:#{results?.length}."
+
+  change = (event, filename) ->
+    out "#{task}: #{filename} #{event}"
+    unless _building
+      _building = true
+      invoke 'build', build_done
+    else
+      out "#{task}: ignoring file watch, building in progress."
+
+  files = files[1..]
+  build (err, results) ->
+    # wait for build to finish
+    for file in files
+      try
+        fs.watch file, persistent: true, change
+      catch error
+        console.error file, error
+    build_done err, results
 
 # ## *unlinkIfCoffeeFile*
 #
