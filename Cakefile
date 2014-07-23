@@ -88,7 +88,11 @@ task 'build', 'compile source', (options) ->
 # ```
 task 'watch', 'compile and watch', (options) ->
   process_options options
-  watch -> log ":-)", green
+  watch
+
+task 'watchtest', 'compile, test, and watch', (options) ->
+  process_options options
+  watch mocha
 
 # ## *test*
 #
@@ -291,12 +295,18 @@ post_compile = (callback) ->
     callback error
 
 # ## coffee watch not flexible enough, I want to run post filters
-watch = () ->
+watch = (postbuild) ->
   task = "watch"
   out "#{task}: Watching for changes."
   _building = true
 
   build_done = (error) ->
+    if postbuild?
+      postbuild complete_build_done
+    else
+      complete_build_done error
+
+  complete_build_done = (error) ->
     _building = false
     #console.error "#{task}: ", err if err?.length
     #out "#{task}: ", results if err?.length and results?.length
@@ -320,7 +330,13 @@ watch = () ->
         fs.watch file, persistent: true, change
       catch error
         console.error file, error
-    build_done error
+    if postbuild?
+      postbuild ->
+        build_done error
+    else
+      build_done error
+
+
 
 # ## *unlinkIfCoffeeFile*
 #
@@ -379,7 +395,7 @@ mocha = (options, callback) ->
   options.push '--compilers'
   options.push 'coffee:coffee-script/register'
   out "mocha #{util.inspect options}" if verbose
-  launch 'mocha', options, callback
+  launchError 'mocha', options, callback
 
 # ## *docco*
 #
