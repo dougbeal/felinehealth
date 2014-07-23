@@ -87,7 +87,8 @@ chunkLog = (logString) ->
 
 flushLog = ->
   if verbose
-    logSheet.appendRow chunkLog Logger.getLog()
+    for row in chunkLog Logger.getLog()
+      logSheet.appendRow [row]
     Logger.clear()
   return
 

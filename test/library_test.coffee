@@ -92,7 +92,8 @@ describe 'chunkLog', ->
     r.should.have.length 2
 
   for count in [0..25]
-    it "chunk #{count} line string", ->
-      r = library.chunkLog [0..count].join '\n'
+    it "chunk #{count} line string", do (count) -> ->
+      ar = [0..count].join '\n'
+      r = library.chunkLog ar
       r.should.be.array
-      r.should.have.length Math.ceil (count+1) / 5
+      r.should.have.length Math.floor(count / 5) + 1
