@@ -269,6 +269,19 @@ emitConfig = ->
   dump "html #{html}" if verbose
   return html.join '\n'
 
+logEmitConfig = ->
+  dump emitConfig()
+
+runImmediateOnDaily = ->
+  testTimeTrigger()
+
+runOnOpen = ->
+  onOpen()
+
+rerunOnInstall = ->
+  namespace = properties.getProperty 'namespace'
+  dump "rerunOnInstall rerunning onInstall with namespace #{namespace}"
+  onInstall namespace
 
 initialize = (e) ->
   dump "initialize."
@@ -280,14 +293,20 @@ initialize = (e) ->
 initializeMenus = (e) ->
   namespace = properties.getProperty 'namespace'
   ui = SpreadsheetApp.getUi()
+
+  submenu = ui.createMenu('developer')
+  .addItem 'Log State', "#{namespace}.logState"
+  .addItem 'Truncate Log', "#{namespace}.truncateLog"
+  .addItem 'Log Emit Config', "#{namespace}.logEmitConfig"
+  .addItem 'Trigger onDaily', "#{namespace}.runImmediateOnDaily"
+  .addItem 'Run onOpen', "#{namespace}.runOnOpen"
+  .addItem 'Re-run Install', "#{namespace}.rerunOnInstall"
+
   menu = ui.createAddonMenu()
-  menu.addItem 'Log State', "#{namespace}.logState"
-  .addToUi()
-  menu.addItem 'Truncate Log', "#{namespace}.truncateLog"
-  .addToUi()
-  menu.addItem 'Template to New Year', "#{namespace}.copyTemplate"
-  .addToUi()
-  menu.addItem 'Sidebar', "#{namespace}.toggleSidebar"
+  menu.addItem 'Copy Template', "#{namespace}.copyTemplate"
+  .addItem 'Show Config Sidebar', "#{namespace}.toggleSidebar"
+  .addSeparator()
+  .addSubMenu submenu
   .addToUi()
 
 
