@@ -98,6 +98,7 @@ logState = ->
     ScriptApp.getProjectTriggers().map (item) ->
       item.getHandlerFunction()
   dump "config %s", config
+  dump "configDefinitions %s", configDefinitions
   dump properties.getProperty 'namespace'
   sheet = SpreadsheetApp.getActiveSheet()
   if sheet
@@ -214,6 +215,51 @@ cacheSheetRows = ->
   flushLog()
   return
 
+toggleSidebar = ->
+  sidebarOpen = false
+  if sidebarOpen
+    dump "closed sidebar from menu"
+    google.script.host.close()
+  else
+    dump "opened sidebar from menu"
+    SpreadsheetApp.getUi().showSidebar createSidebarHtml()
+  flushLog()
+  return
+
+createSitebarTemplate = ->
+  t = HtmlService.createTemplateFromFile 'sidebar.html'
+  dump "getCode #{t.getCode()}" if verbose
+  return t
+
+createSidebarHtml = ->
+  return createSitebarTemplate().evaluate()
+
+emitConfig = ->
+  html = []
+  namespace = properties.getProperty 'namespace'
+  for item in configDefinitions
+    n = item.name
+    d = item.desc
+    v = config[n]
+    dump "#{n} #{d} #{v} #{typeof v}" if trace
+    html.push switch typeof v
+      when 'boolean'
+        """
+        <div class="block">
+        <label for=\"#{n}\">
+          #{n}
+        </lable>
+        <input type="checkbox" name="config_#{n}" id="#{n}"
+        #{"checked" if config[n]} >
+        #{d}
+        </div>
+        """
+      when 'number' then ""
+      when 'string' then ""
+  dump "html #{html}" if verbose
+  return html.join '\n'
+
+
 initialize = (e) ->
   dump "initialize."
   readConfig()
@@ -230,6 +276,8 @@ initializeMenus = (e) ->
   menu.addItem 'Truncate Log', "#{namespace}.truncateLog"
   .addToUi()
   menu.addItem 'Template to New Year', "#{namespace}.copyTemplate"
+  .addToUi()
+  menu.addItem 'Sidebar', "#{namespace}.toggleSidebar"
   .addToUi()
 
 
@@ -382,13 +430,38 @@ ignoreSheets = [
   "Config"
 ]
 logSheetName = "Log"
+
+configDefinitions = [
+  name:'verbose'
+  desc:'log to Log sheet'
+  def:true
+,
+  name:'trace'
+  desc:'detailed execution trace to Log sheet'
+  def:true
+,
+  name:'autoAddNewLines'
+  desc:'Turn off automatic adding of new lines to the first sheet'
+  def:true
+  ]
+
 if SpreadsheetApp?
   spreadsheet = SpreadsheetApp.getActive()
   logSheet = spreadsheet.getSheetByName logSheetName
   properties = PropertiesService.getDocumentProperties()
   config = {}
-  verbose = properties.getProperty "config.verbose"
-  trace = properties.getProperty "config.trace"
+  for item in configDefinitions
+    name = item.name
+    v = properties.getProperty "config.#{name}"
+    if not v?
+      v = item['def']
+      properties.setProperty "config.#{name}", v
+      v = properties.getProperty "config.#{name}"
+    config[name] = 'true' is properties.getProperty "config.#{name}"
+  verbose = config['verbose']
+  trace = config['trace']
+
+
   # todo: add to config
   # todo: create config sidebar, eliminate config sheet
   autoAddNewLines = true
