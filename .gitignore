@@ -14,3 +14,5 @@ node_modules/
 /build/drivesync_test.map
 /build/library_test.js
 /build/library_test.map
+/build/library.js
+/build/library.map
