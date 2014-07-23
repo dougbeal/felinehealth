@@ -1,3 +1,4 @@
+util = require 'util'
 chai = require 'chai'
 chai.config.includeStack = true
 should = chai.should()
@@ -6,7 +7,7 @@ should = chai.should()
 describe 'isDateCurrent', ->
   library = null
   before ->
-    library = require '../library'
+    library = require '../build/library'
 
   it 'same date returns true', ->
     date = new Date 2014,1,1
@@ -56,4 +57,42 @@ describe 'isDateCurrent', ->
   it 'old -1 day returns false', ->
     now = new Date 2013,1,2
     old = new Date 2013,1,1
-    library.isDateCurrent(now, old).should.equal false
+    library.isDateCurrent now, old
+    .should.equal false
+
+describe 'chunkLog', ->
+  library = null
+  before ->
+    library = require '../build/library'
+
+  it 'chunk empty string', ->
+    library.chunkLog ''
+    .should.be.array
+
+  it 'chunk single space string', ->
+    library.chunkLog ' '
+    .should.be.array
+
+  it 'chunk single newline string', ->
+    library.chunkLog '\n'
+    .should.be.array
+
+  it 'chunk one line string', ->
+    library.chunkLog 'foo'
+    .should.be.array
+
+  it 'chunk two line string', ->
+    r = library.chunkLog 'foo\nbar'
+    r.should.be.array
+    r.should.have.length 1
+
+  it 'chunk 6 line string', ->
+    r = library.chunkLog [0..5].join '\n'
+    r.should.be.array
+    r.should.have.length 2
+
+  for count in [0..25]
+    it "chunk #{count} line string", ->
+      r = library.chunkLog [0..count].join '\n'
+      r.should.be.array
+      r.should.have.length Math.ceil (count+1) / 5

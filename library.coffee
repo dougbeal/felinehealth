@@ -75,10 +75,19 @@ testTimeTrigger = () ->
   dump "Enabling one shot test time trigger."
   return
 
+chunkLog = (logString) ->
+  logArray = logString.split '\n'
+  return logArray.reduce (acc, item, index) ->
+    group = Math.floor index / 5
+    p = acc[group]
+    acc[group] = "#{if p? then (p + '\n') else '' }#{item}"
+    return acc
+  ,
+    []
 
 flushLog = ->
   if verbose
-    logSheet.appendRow [Logger.getLog()]
+    logSheet.appendRow chunkLog Logger.getLog()
     Logger.clear()
   return
 
@@ -468,4 +477,8 @@ if SpreadsheetApp?
   if verbose is null or trace is null
     readConfig()
 else
+  ###
+  # exports for testing
+  ###
   exports.isDateCurrent = isDateCurrent
+  exports.chunkLog = chunkLog
