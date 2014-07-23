@@ -14,8 +14,6 @@
     "underscore": "latest",
     "mocha": "latest",
     "chai": "latest",
-    "zombie": "latest",
-    "json2yaml": "latest",
     "optparse": "latest"
   }
 }
