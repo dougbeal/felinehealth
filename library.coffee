@@ -150,17 +150,6 @@ setupNewRow = (range) ->
   flushLog()
   return
 
-formatRow = (row) ->
-  dest = spreadsheet.getRange "A#{row}:A"
-  source = dest.offset -1, 0
-  source.copyTo dest, formatOnly: true
-
-addNewRow = (sheet) ->
-  sheet.appendRow [new Date()]
-  row = sheet.getMaxRows()
-  formatRow row
-  dump "addNewRow new and formatted %s", row
-
 isDateCurrent = (newDate, oldDate) ->
   ny = newDate.getFullYear()
   oy = oldDate.getFullYear()
@@ -182,6 +171,25 @@ isMaxRowCurrent = (sheet) ->
   dump "isMaxRowCurrent sheet '%s:%s' dates ['%s', '%s']",
     sheet.getName(), cell, n, t
   return isDateCurrent n, t
+
+formatRow = (row) ->
+  dest = spreadsheet.getRange "A#{row}:A"
+  source = dest.offset -1, 0
+  source.copyTo dest, formatOnly: true
+
+addNewRow = (sheet) ->
+  sheet.appendRow [new Date()]
+  row = sheet.getMaxRows()
+  formatRow row
+  dump "addNewRow new and formatted %s", row
+
+checkAndAddNewRow = ->
+  ss = SpreadsheetApp.getActiveSpreadsheet()
+  sheet = ss.getSheets()[0]
+  dump "checkAndAddNewRow - examine date on sheet '%s'", sheet.getName()
+  addNewRow sheet if not isMaxRowCurrent sheet
+  flushLog()
+  return
 
 
 expireCache = ->
@@ -239,10 +247,8 @@ onInstall = (namespace) ->
 Automatically add new line
 ###
 onDaily = () ->
-  sheet = ss.getSheets()[0]
-  dump "onDaily - examine date on sheet '%s'", sheet.getName()
-  addNewRow sheet if not isMaxRowCurrent sheet
-  flushLog()
+  dump "onDaily - possibly add new row"
+  checkAndAddNewRow()
   return
 
 ###
@@ -252,12 +258,7 @@ onOpen = (e) ->
   dump "onOpen. e:'%s'", e
   initialize(e)
   if autoAddNewLines
-    # if last row is not current, instert another row
-    ss = SpreadsheetApp.getActiveSpreadsheet()
-    sheet = ss.getSheets()[0]
-    dump "onOpen - autoAddNewLines - examine date on sheet '%s'",
-      sheet.getName()
-    addNewRow sheet if not isMaxRowCurrent sheet
+    checkAndAddNewRow()
   flushLog()
   return
 
