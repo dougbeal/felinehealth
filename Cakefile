@@ -15,6 +15,10 @@ files = [
   'test/library_test.coffee'
   ]
 
+html_files = [
+  'sidebar.html'
+  ]
+
 fs = require 'fs'
 path = require 'path'
 {print} = require 'util'
@@ -164,6 +168,17 @@ task 'upload', 'uploads files from bild matching project files', (options) ->
         out "title '#{project.title}'" if verbose
         do_upload error, project
 
+task 'site', 'Build github Jekyll _site', (options) ->
+  process_options options
+  site (error) ->
+    if error
+      log ";(", red
+    else
+      log ";)", green
+
+
+
+
 # Internal Functions
 #
 # ## *walk*
@@ -247,25 +262,33 @@ build = (watch, callback) ->
   options = ['-m', '-c', '-b', '-o' ]
   options = options.concat files
   options.unshift '-w' if watch
-  launchError 'coffee', options, (error) ->
-    if error
-      out "error during compile #{error}.  no post_compile"
-      callback error
-    else
-      post_compile callback
+  async.parallel [
+    (callback) -> launchError 'coffee', options,
+      (error) ->
+        if error
+          out "error during compile #{error}.  no post_compile"
+          callback error
+        else
+          post_compile -> callback error
+    (callback) -> launchError 'cp', [html_files, files[0]], callback
+    ]
+    ,
+    callback
 
 post_compile = (callback) ->
+  out "post_compile: callback #{callback}" if trace
   dest_dir = files[0]
   sources = files[1..]
-
   async.each sources, (source, callback) ->
     filename = path.basename source, '.coffee'
     dest = path.join dest_dir, "#{filename}.js"
     launchError 'util/commit_stamp.sh', [source, dest], (error) ->
-      out "post_compile: #{filename}, #{source}, #{dest}, #{error}" if trace
+      out "post_compile: #{filename}, #{source}, #{dest}, e:#{error}" if trace
       callback error
   ,
-  callback
+  (error) ->
+    "post_compile: async finished e:#{error}"
+    callback error
 
 # ## coffee watch not flexible enough, I want to run post filters
 watch = () ->
@@ -497,6 +520,7 @@ upload = (meta, project, callback) ->
           if error
             if error.code is 'ENOENT'
               out "error reading #{fullpath} #{error}, excluding" if verbose
+              out "excluding #{fullpath}, file doesn't exist." if not verbose
               callback null, null
             else
               out "error reading #{fullpath} #{error}, fatal"
@@ -518,6 +542,10 @@ upload = (meta, project, callback) ->
       ],
       (error, result) -> callback error, result
 
+site = (callback) ->
+  launch "jekyll", ['build', '--trace'], (e) ->
+    out "site: #{e}."
+    callback e
 
 
 typeToExtension = (scriptType) ->
