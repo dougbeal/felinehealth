@@ -1,7 +1,8 @@
 #!/bin/bash
 source="$1"
 dest="$2"
-msg=$(git --no-pager log HEAD -1 "${source}")
+#msg=$(git --no-pager log HEAD -1 "${source}")
+msg=$(git --no-pager log HEAD -5 --pretty=format:"%h %s" "${source}")
 ext="${dest##*.}"
 if [ "$ext" == "js" ]; then
     open_comment="/**"
