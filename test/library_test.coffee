@@ -1,8 +1,11 @@
 util = require 'util'
 chai = require 'chai'
+sinon = require 'sinon'
+sinonChai = require "sinon-chai"
+
 chai.config.includeStack = true
 should = chai.should()
-
+chai.use sinonChai
 
 describe 'isDateCurrent', ->
   library = null
@@ -97,3 +100,57 @@ describe 'chunkLog', ->
       r = library.chunkLog ar
       r.should.be.array
       r.should.have.length Math.floor(count / 5) + 1
+
+describe 'catchAndLogError', ->
+  library = null
+  before ->
+    library = require '../build/library'
+
+  beforeEach ->
+    library.Logger.log.reset()
+    library.Logger.clear.reset()
+
+
+  it 'should catch error', ->
+    generateError = library.catchAndLogError (event) ->
+      foo
+    generateError()
+    library.Logger.log.should.have.been.called
+
+  it 'should log error', ->
+    error = new Object()
+    s = 'Fakir'
+    error.toString = -> s
+    generateError = library.catchAndLogError (event) ->
+      throw error
+    generateError()
+    library.Logger.log.should.have.been.called
+    library.Logger.log.getCall(0).args[0].should.contain s
+
+  it 'should catch error and pass arguments', ->
+    generateError = library.catchAndLogError (event) ->
+      event.not.undefined
+      event.equals "event"
+      foo
+    generateError "event"
+    library.Logger.log.should.have.been.called
+
+
+  it 'should pass arguments', ->
+    generateError = library.catchAndLogError (event) ->
+      event.undefined
+      event.equals "event"
+    generateError "event"
+
+
+  it 'should pass many arguments', ->
+    generateError = library.catchAndLogError (one, two, three, four) ->
+      event.undefined
+      event.equals "event"
+    generateError [1..4]...
+
+  it 'should call spy', ->
+    spy = sinon.spy()
+    generateError = library.catchAndLogError spy
+    generateError "event"
+    spy.should.have.been.called

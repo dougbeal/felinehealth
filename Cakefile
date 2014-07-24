@@ -15,8 +15,9 @@ files = [
   'test/library_test.coffee'
   ]
 
-html_files = [
+copy_files = [
   'sidebar.html'
+  'container.js'
   ]
 
 fs = require 'fs'
@@ -234,6 +235,7 @@ log = (message, color, explanation) -> console.log color + message + reset + ' '
 # **and** pipe to process stdout and stderr respectively
 # **and** on child process exit emit callback if set and status is 0
 launch = (cmd, options=[], callback) ->
+  out "launch:#{cmd} #{options}" if trace
   cmd = which(cmd) if which
   app = spawn cmd, options
   app.stdout.pipe(process.stdout)
@@ -245,12 +247,13 @@ launch = (cmd, options=[], callback) ->
       process.exit status
 
 launchError = (cmd, options=[], callback) ->
+  out "launchError:#{cmd} #{options}" if trace
   cmd = which(cmd) if which
   app = spawn cmd, options
   app.stdout.pipe(process.stdout)
   app.stderr.pipe(process.stderr)
   app.on 'exit', (status) ->
-    callback(status)
+    callback? status
 
 # ## *build*
 #
@@ -274,7 +277,7 @@ build = (watch, callback) ->
           callback error
         else
           post_compile -> callback error
-    (callback) -> launchError 'cp', [html_files, files[0]], callback
+    (callback) -> launchError 'cp', ['-v'].concat(copy_files.concat(files[0])), callback
     ]
     ,
     callback

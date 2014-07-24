@@ -1,25 +1,15 @@
+setConfig = (name, value) ->
+  config[name] = value
+  properties.setProperty "config.#{name}", value
+  verbose = value if name is 'verbose'
+  trace = value if name is 'trace'
+
+
 createSupportSheets = (spreadsheet) ->
   for i in ignoreSheets
     sheetName = ignoreSheets
     sheet = spreadsheet.getSheetByName(sheetName)
     spreadsheet.insertSheet sheetName  if sheet is null
-  return
-
-readConfig = ->
-  rawConfig = spreadsheet.getSheetByName("Config").getRange("A1:B").getValues()
-  for item in rawConfig
-    k = item[0]
-    v = item[1]
-    if k isnt "" and v isnt ""
-      config[k] = v
-      properties.setProperty "config." + k, v
-  config["init"] = true
-  verbose = config["verbose"]
-  trace = config["trace"]
-  # todo: add autoAddNewLines to config
-  config['autoAddNewLines'] = true
-  Logger.log "readConfig %s", config
-  flushLog()
   return
 
 isIgnoreSheet = (name) ->
@@ -40,7 +30,7 @@ registerSpreadsheetTrigger = (namespace) ->
     ScriptApp.newTrigger(prefix + "initialize").forSpreadsheet(spreadsheet)
     .onOpen().create()
 
-    enableTimeTrigger(namespace) if autoAddNewLines
+    enableTimeTrigger(namespace) if config.autoAddNewLines
 
     dump "triggers %s installed for %s", spreadsheet.getName(),
       ScriptApp.getProjectTriggers().map (item) ->
@@ -73,6 +63,15 @@ testTimeTrigger = () ->
   .after 1
   .create()
   dump "Enabling one shot test time trigger."
+  return
+
+testErrorTrigger = () ->
+  setupTimeTrigger "generateError"
+  .timeBased()
+  .after 1
+  .create()
+  dump "Enabling one shot test time trigger."
+  flushLog()
   return
 
 chunkLog = (logString) ->
@@ -138,6 +137,24 @@ copyTemplate = ->
   dest = copy.getRange "A#{r}"
   dest.setValue new Date()
 
+
+catchAndLogError = (fn) ->
+  return (args...) ->
+    try
+      fn(args...)
+    catch error
+      dumpError error
+
+dumpError = (err) ->
+  s = [err.toString()]
+  s.push "name: " + err.name if err.name?
+  s.push "\nstack: \n" + err.stack + "\n" if err.stack?
+  for name, value of err
+    s.push name + ": " + value
+  s.join '\n'
+  Logger.log s
+  flushLog()
+
 dump = ->
   Logger.log.apply Logger, arguments if verbose
   return
@@ -162,6 +179,8 @@ setupNewRow = (range) ->
   return
 
 isDateCurrent = (newDate, oldDate) ->
+  if not oldDate?
+    return false
   ny = newDate.getFullYear()
   oy = oldDate.getFullYear()
   nm = newDate.getMonth()
@@ -181,7 +200,10 @@ isMaxRowCurrent = (sheet) ->
   t = sheet.getRange(cell).getValue()
   dump "isMaxRowCurrent sheet '%s:%s' dates ['%s', '%s']",
     sheet.getName(), cell, n, t
-  return isDateCurrent n, t
+  if t is ''
+    return false
+  else
+    return isDateCurrent n, t
 
 formatRow = (row) ->
   dest = spreadsheet.getRange "A#{row}:A"
@@ -251,23 +273,37 @@ emitConfig = ->
     n = item.name
     d = item.desc
     v = config[n]
-    dump "#{n} #{d} #{v} #{typeof v}" if trace
+    tdump "#{n} #{d} #{v} #{typeof v}"
     html.push switch typeof v
       when 'boolean'
         """
         <div class="block">
-        <label for=\"#{n}\">
-          #{n}
-        </lable>
-        <input type="checkbox" name="config_#{n}" id="#{n}"
-        #{"checked" if config[n]} >
-        #{d}
+          <input type="checkbox" name="config_#{n}" id="#{n}"
+          #{"checked" if config[n]}
+          onclick="google.script.run.containerCallbackShim(
+            'configCheckboxToggle',
+            '#{n}',
+            this.checked);">c
+          </input>
+          <label for=\"#{n}\">
+            #{n}
+          </lable>
+            <div>
+              #{d}
+            </div>
         </div>
         """
       when 'number' then ""
       when 'string' then ""
-  dump "html #{html}" if verbose
+  tdump "html #{html}"
   return html.join '\n'
+
+configCheckboxToggle = (name, checked) ->
+  checked = checked is 'true' if typeof checked is 'string'
+  dump "n:%s c:%s", name, checked
+  setConfig name, checked
+  flushLog()
+
 
 logEmitConfig = ->
   dump emitConfig()
@@ -285,7 +321,6 @@ rerunOnInstall = ->
 
 initialize = (e) ->
   dump "initialize."
-  readConfig()
   cacheSheetRows()
   initializeMenus e
   return
@@ -294,28 +329,37 @@ initializeMenus = (e) ->
   namespace = properties.getProperty 'namespace'
   ui = SpreadsheetApp.getUi()
 
-  submenu = ui.createMenu('developer')
-  .addItem 'Log State', "#{namespace}.logState"
-  .addItem 'Truncate Log', "#{namespace}.truncateLog"
-  .addItem 'Log Emit Config', "#{namespace}.logEmitConfig"
-  .addItem 'Trigger onDaily', "#{namespace}.runImmediateOnDaily"
-  .addItem 'Run onOpen', "#{namespace}.runOnOpen"
-  .addItem 'Re-run Install', "#{namespace}.rerunOnInstall"
+
 
   menu = ui.createAddonMenu()
   menu.addItem 'Copy Template', "#{namespace}.copyTemplate"
   .addItem 'Show Config Sidebar', "#{namespace}.toggleSidebar"
   .addSeparator()
-  .addSubMenu submenu
-  .addToUi()
+
+  smenu = null
+  if config.developer
+    smenu = menu
+  else
+    smenu = ui.createMenu('developer')
+
+  smenu.addItem 'Log State', "#{namespace}.logState"
+  .addItem 'Truncate Log', "#{namespace}.truncateLog"
+  .addItem 'Log Emit Config', "#{namespace}.logEmitConfig"
+  .addItem 'Time Trigger onDaily', "#{namespace}.runImmediateOnDaily"
+  .addItem 'Run onOpen', "#{namespace}.runOnOpen"
+  .addItem 'Re-run Install', "#{namespace}.rerunOnInstall"
+  .addItem 'Time Trigger Error', "#{namespace}.testErrorTrigger"
+
+  menu.addSubMenu smenu  if not config.developer
+
+  menu.addToUi()
 
 
 ###
 Event handlers
 ###
-onInstall = (namespace) ->
+onInstall = catchAndLogError (namespace) ->
   dump "onInstall"
-  readConfig()
   registerSpreadsheetTrigger namespace
   onOpen()
   return
@@ -323,23 +367,29 @@ onInstall = (namespace) ->
 ###
 Automatically add new line
 ###
-onDaily = () ->
+onDaily = catchAndLogError () ->
   dump "onDaily - possibly add new row"
   checkAndAddNewRow()
   return
 
+generateError = catchAndLogError (event) ->
+  dump "generateError %s", event
+  foo
+  flushLog()
+
+
 ###
 Called onOpen
 ###
-onOpen = (e) ->
+onOpen = catchAndLogError (e) ->
   dump "onOpen. e:'%s'", e
   initialize(e)
-  if autoAddNewLines
+  if config.autoAddNewLines
     checkAndAddNewRow()
   flushLog()
   return
 
-edit = (e) ->
+edit = catchAndLogError (e) ->
   sheet = e.source.getActiveSheet()
   sheetName = sheet.getSheetName()
   cachedRows = +properties.getProperty sheetName
@@ -368,18 +418,18 @@ edit = (e) ->
       dump "onEdit - caching rows."
     else
       if cachedRows < rows
-        dump "onEdit - inserted, rows increased %s to %s.", cachedRows, rows
+        tdump "onEdit - inserted, rows increased %s to %s.", cachedRows, rows
       else if rows is cachedRows
-        dump "onEdit - rows unchanged, %s column %s.", cachedRows, column
+        tdump "onEdit - rows unchanged, %s column %s.", cachedRows, column
       else
         # deletion
-        dump "onEdit - rows deleted %s to %s.", cachedRows, rows
+        tdump "onEdit - rows deleted %s to %s.", cachedRows, rows
 
   #properties.setProperty(sheetName, rows);
   flushLog()
   return
 
-change = (e) ->
+change = catchAndLogError (e) ->
   dump "onChange - %s", e
   if e.changeType is "INSERT_ROW"
     change_INSERT_ROW()
@@ -472,6 +522,10 @@ configDefinitions = [
   name:'autoAddNewLines'
   desc:'Turn off automatic adding of new lines to the first sheet'
   def:true
+,
+  name:'developer'
+  desc:'Promote developer functions up a level in the menu'
+  def:false
   ]
 
 if SpreadsheetApp?
@@ -486,19 +540,19 @@ if SpreadsheetApp?
       v = item['def']
       properties.setProperty "config.#{name}", v
       v = properties.getProperty "config.#{name}"
-    config[name] = 'true' is properties.getProperty "config.#{name}"
+    v = v is 'true'
+    config[name] = v
   verbose = config['verbose']
   trace = config['trace']
-
-
-  # todo: add to config
-  # todo: create config sidebar, eliminate config sheet
-  autoAddNewLines = true
-  if verbose is null or trace is null
-    readConfig()
 else
   ###
   # exports for testing
   ###
   exports.isDateCurrent = isDateCurrent
   exports.chunkLog = chunkLog
+  exports.catchAndLogError = catchAndLogError
+  exports.generateError = generateError
+  sinon = require 'sinon'
+  exports.Logger = Logger =
+    log: sinon.spy()
+    clear: sinon.spy()

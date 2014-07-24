@@ -8,7 +8,9 @@
     "async": "latest",
     "googleapis": "^0.8.0",
     "openurl": "^1.1.0",
-    "request": "^2.37.0"
+    "request": "^2.37.0",
+    "sinon": "^1.10.3",
+    "sinon-chai": "^2.5.0"
   },
   "devDependencies": {
     "underscore": "latest",
