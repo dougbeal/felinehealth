@@ -11,7 +11,7 @@ function containerOnInstall() {
 
 __slice = [].slice;
 
-function containerOnconfigSidebarShim() {
+function containerCallbackShim() {
  
   var args, fnName;
   fnName = arguments[0], args = 2 <= arguments.length ? __slice.call(arguments, 1) : [];
