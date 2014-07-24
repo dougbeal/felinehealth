@@ -24,7 +24,10 @@ fs = require 'fs'
 path = require 'path'
 {print} = require 'util'
 {spawn, exec} = require 'child_process'
-drivesync = require './build/drivesync'
+try
+  drivesync = require './build/drivesync'
+catch error
+  console.error error
 async = require 'async'
 util = require 'util'
 readline = require 'readline'
@@ -45,7 +48,7 @@ red = '\x1b[0;31m'
 privateDir = path.join __dirname, ".private"
 selectionFile = path.join privateDir, "selection.json"
 projectFile = path.join privateDir, "project.json"
-drivesync.privateDir = privateDir
+drivesync.privateDir = privateDir if drivesync?
 projectDownloadDir = path.join __dirname, files[0], 'download'
 buildDir = path.join __dirname, files[0]
 
