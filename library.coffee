@@ -283,7 +283,7 @@ emitConfig = ->
           onclick="google.script.run.containerCallbackShim(
             'configCheckboxToggle',
             '#{n}',
-            this.checked);">c
+            this.checked);">
           </input>
           <label for=\"#{n}\">
             #{n}
