@@ -277,7 +277,20 @@ build = (watch, callback) ->
           callback error
         else
           post_compile -> callback error
-    (callback) -> launchError 'cp', ['-v'].concat(copy_files.concat(files[0])), callback
+    (callback) ->
+      dest_dir = files[0]
+      async.series [
+        (callback) ->
+          launchError 'cp', ['-v'].concat(copy_files.concat(dest_dir)), callback
+        ,
+        (callback) ->
+          async.each copy_files, (source, callback) ->
+            dest = path.join dest_dir, path.basename(source)
+            launchError 'util/commit_stamp.sh', [source, dest], (error) ->
+              callback error
+        ],
+        callback()
+
     ]
     ,
     callback
