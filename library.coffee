@@ -212,6 +212,7 @@ formatRow = (row) ->
 
 addNewRow = (sheet) ->
   sheet.appendRow [new Date()]
+  updateCacheSheetRows sheet
   row = sheet.getMaxRows()
   formatRow row
   dump "addNewRow new and formatted %s", row
@@ -234,6 +235,13 @@ expireCache = ->
   dump "cleard cache."
   flushLog()
   return
+
+updateCacheSheetRows = (sheet) ->
+  rows = sheet.getMaxRows()
+  name = sheet.getName()
+  sid = sheet.getSheetId()
+  properties.setProperty name, rows
+  dump "sheet %s:'%s' rows %s.", sid, name, rows
 
 cacheSheetRows = ->
   sheets = spreadsheet.getSheets()
