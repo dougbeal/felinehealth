@@ -3,7 +3,8 @@ setConfig = (name, value) ->
   properties.setProperty "config.#{name}", value
   verbose = value if name is 'verbose'
   trace = value if name is 'trace'
-
+  fnName = "configToggle_#{name}"
+  this[fnName](value) if this[fnName]?
 
 createSupportSheets = (spreadsheet) ->
   for i in ignoreSheets
@@ -63,6 +64,7 @@ testTimeTrigger = () ->
   .after 1
   .create()
   dump "Enabling one shot test time trigger."
+  flushLog()
   return
 
 testErrorTrigger = () ->
@@ -163,6 +165,11 @@ tdump = ->
   Logger.log.apply Logger, arguments if trace
   return
 
+# active sheet is in position 0
+getActiveSheet = () ->
+  ss = SpreadsheetApp.getActiveSpreadsheet()
+  return ss.getSheets()[0]
+
 setupNewRow = (range) ->
   dest = range
   row = range.getRow()
@@ -173,7 +180,7 @@ setupNewRow = (range) ->
     dest.setValue new Date()
     dump "setupNewRow row %s - %s", row, dest.getA1Notation()
   else
-    dump "FAILED - value already set %s - setupNewRow row %s - %s", oldValue,
+    dump "setupNewRow - FAILED - value already set %s - row %s - %s", oldValue,
       row, dest.getA1Notation()
   flushLog()
   return
@@ -193,12 +200,21 @@ isDateCurrent = (newDate, oldDate) ->
         (nm == om and
           (nd <= od))))
 
+getNewestRow = (sheet) ->
+  row = null
+  if config.ascending
+    row = sheet.getMaxRows()
+  else
+    row = sheet.getFrozenRows() + 1
+  dump "getNewestRow is #{row}."
+  return row
+
 # A column contains current year/month/day or further in the future
-isMaxRowCurrent = (sheet) ->
+isNewestRowCurrent = (sheet) ->
   n = new Date()
-  cell  = "A#{sheet.getMaxRows()}"
+  cell  = "A#{getNewestRow(sheet)}"
   t = sheet.getRange(cell).getValue()
-  dump "isMaxRowCurrent sheet '%s:%s' dates ['%s', '%s']",
+  dump "isNewestRowCurrent row #{cell} sheet '%s:%s' dates ['%s', '%s']",
     sheet.getName(), cell, n, t
   if t is ''
     return false
@@ -207,24 +223,30 @@ isMaxRowCurrent = (sheet) ->
 
 formatRow = (row) ->
   dest = spreadsheet.getRange "A#{row}:A"
-  source = dest.offset -1, 0
+  offset = if config.ascending then -1 else +1
+  source = dest.offset offset, 0
   source.copyTo dest, formatOnly: true
+  dump "formatRow row #{row} from #{source.getA1Notation()}" +
+    " to #{dest.getA1Notation()} offset #{offset}."
 
 addNewRow = (sheet) ->
-  sheet.appendRow [new Date()]
+  row = getNewestRow(sheet)
+  newRowRange = null
+  if config.ascending
+    sheet.insertRowAfter row
+    row = row + 1
+  else
+    sheet.insertRowBefore row
+  setupNewRow sheet.getRange "A#{row}"
   updateCacheSheetRows sheet
-  row = sheet.getMaxRows()
-  formatRow row
   dump "addNewRow new and formatted %s", row
 
 checkAndAddNewRow = ->
-  ss = SpreadsheetApp.getActiveSpreadsheet()
-  sheet = ss.getSheets()[0]
+  sheet = getActiveSheet()
   dump "checkAndAddNewRow - examine date on sheet '%s'", sheet.getName()
-  addNewRow sheet if not isMaxRowCurrent sheet
+  addNewRow sheet if not isNewestRowCurrent sheet
   flushLog()
   return
-
 
 expireCache = ->
   sheets = spreadsheet.getSheets()
@@ -312,6 +334,10 @@ configCheckboxToggle = (name, checked) ->
   setConfig name, checked
   flushLog()
 
+configToggle_ascending = (value) ->
+  sheet = getActiveSheet()
+  # change sorting, column A
+  sheet.sort 1, value
 
 logEmitConfig = ->
   dump emitConfig()
@@ -336,8 +362,6 @@ initialize = (e) ->
 initializeMenus = (e) ->
   namespace = properties.getProperty 'namespace'
   ui = SpreadsheetApp.getUi()
-
-
 
   menu = ui.createAddonMenu()
   menu.addItem 'Copy Template', "#{namespace}.copyTemplate"
@@ -469,7 +493,7 @@ change_INSERT_ROW = () ->
       dump "onChange INSERT_ROW null cache - sheet %s:'%s' rows %s.",
         sid, name, rows  if cachedRows is null
   if found
-    range = sheet.getRange "A#{rows}"
+    range = sheet.getRange "A#{getNewestRow(sheet)}"
     dump "onChange INSERT_ROW - sheet %s:'%s' rows %s (%s) range %s.",
       sid, name, rows, cachedRows, range.getA1Notation()
     setupNewRow range
@@ -522,6 +546,10 @@ configDefinitions = [
   name:'verbose'
   desc:'log to Log sheet'
   def:true
+,
+  name:'ascending'
+  desc:'Add rows at bottom'
+  def:false
 ,
   name:'trace'
   desc:'detailed execution trace to Log sheet'
